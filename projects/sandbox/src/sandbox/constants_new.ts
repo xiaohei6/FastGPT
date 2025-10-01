@@ -292,10 +292,7 @@ if __name__ == '__main__':
             result = main()
         
         # 处理matplotlib图片
-        try:
-            process_matplotlib_images(result)
-        except:
-            pass
+        process_matplotlib_images(result)
         
         print(result)
     except Exception as e:

@@ -1,2 +1,14 @@
 numpy
 pandas
+matplotlib
+seaborn
+plotly
+requests
+beautifulsoup4
+scipy
+scikit-learn
+pillow
+opencv-python
+jupyter
+ipython
+tqdm

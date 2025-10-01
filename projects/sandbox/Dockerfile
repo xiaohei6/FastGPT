@@ -1,8 +1,10 @@
 # --------- install dependence -----------
 FROM python:3.11-alpine AS python_base
 ENV VERSION_RELEASE = Alpine3.11
-# 安装make和g++
-RUN apk add --no-cache make g++ tar wget gperf automake libtool linux-headers
+# 安装make、g++和中文字体支持
+RUN apk add --no-cache make g++ tar wget gperf automake libtool linux-headers \
+    fontconfig ttf-dejavu ttf-liberation \
+    && fc-cache -f
 
 WORKDIR /app
 COPY projects/sandbox/requirements.txt /app/requirements.txt
@@ -56,12 +58,16 @@ RUN pnpm --filter=sandbox build
 FROM node:20.14.0-alpine AS runner
 WORKDIR /app
 
-RUN apk add --no-cache libffi libffi-dev strace bash
+RUN apk add --no-cache libffi libffi-dev strace bash fontconfig ttf-dejavu ttf-liberation \
+    && fc-cache -f
 COPY --from=python_base /usr/local /usr/local
 COPY --from=builder /app/node_modules /app/node_modules
 COPY --from=builder /app/projects/sandbox /app/projects/sandbox
 
 ENV NODE_ENV=production
 ENV PATH="/usr/local/bin:${PATH}"
+# 设置matplotlib字体缓存目录
+ENV MPLCONFIGDIR=/tmp/matplotlib
+ENV PYTHONPATH=/usr/local/lib/python3.11/site-packages
 
 CMD ["node", "--no-node-snapshot", "projects/sandbox/dist/main.js"]

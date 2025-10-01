@@ -15,10 +15,10 @@ _installed_packages = set()
 
 def extract_imports(code):
     """提取代码中所有的导入语句"""
-    try:
-        tree = ast.parse(code)
-        imports = []
-        for node in ast.walk(tree):
+        try:
+    tree = ast.parse(code)
+    imports = []
+    for node in ast.walk(tree):
             if isinstance(node, ast.Import):
                 for alias in node.names:
                     imports.append(alias.name)
@@ -292,10 +292,7 @@ if __name__ == '__main__':
             result = main()
         
         # 处理matplotlib图片
-        try:
-            process_matplotlib_images(result)
-        except:
-            pass
+        process_matplotlib_images(result)
         
         print(result)
     except Exception as e:
@@ -472,5 +469,74 @@ def detect_file_write_operations(code):
         if pattern in code:
             return f"File write operation detected: {pattern}"
     return None
+
+def run_pythonCode(data:dict):
+    if not data or "code" not in data:
+        return {"error": "Invalid request format: missing code"}
+    
+    code = data.get("code")
+    if not code or not code.strip():
+        return {"error": "Code cannot be empty"}
+    
+    # 提取导入的包
+    imports = extract_imports(code)
+    
+    # 自动安装缺失的包
+    install_error = install_missing_packages(imports)
+    if install_error:
+        return {"error": install_error}
+    
+    code = remove_print_statements(code)
+    dangerous_import = detect_dangerous_imports(code)
+    if dangerous_import:
+        return {"error": f"Importing {dangerous_import} is not allowed."}
+    
+    # Check for file write operations
+    write_operation = detect_file_write_operations(code)
+    if write_operation:
+        return {"error": f"File write operations are not allowed: {write_operation}"}
+    
+    # Handle variables - default to empty dict if not provided or None
+    variables = data.get("variables", {})
+    if variables is None:
+        variables = {}
+    
+    var_def = ""
+    
+    # Process variables with proper validation
+    for k, v in variables.items():
+        if not isinstance(k, str) or not k.strip():
+            return {"error": f"Invalid variable name: {repr(k)}"}
+        
+        # Use repr() to properly handle Python True/False/None values
+        try:
+            one_var = f"{k} = {repr(v)}\\n"
+            var_def = var_def + one_var
+        except Exception as e:
+            return {"error": f"Error processing variable {k}: {str(e)}"}
+    
+    # 使用增强的输出代码，支持matplotlib图片
+    output_code = create_enhanced_output_code()
+    
+    code = seccomp_prefix + "\\n" + var_def + "\\n" + code + "\\n" + output_code
+    
+    # Note: We still need to create the subprocess file for execution,
+    # but user code cannot write additional files
+    tmp_file = os.path.join(data["tempDir"], "subProcess.py")
+    with open(tmp_file, "w", encoding="utf-8") as f:
+        f.write(code)
+    try:
+        result = subprocess.run(["python3", tmp_file], capture_output=True, text=True, timeout=30)
+        if result.returncode == -31:
+            return {"error": "Dangerous behavior detected (likely file write attempt)."}
+        if result.stderr != "":
+            return {"error": result.stderr}
+
+        out = ast.literal_eval(result.stdout.strip())
+        return out
+    except subprocess.TimeoutExpired:
+        return {"error": "Timeout error or blocked by system security policy"}
+    except Exception as e:
+        return {"error": str(e)}
 
 `;
