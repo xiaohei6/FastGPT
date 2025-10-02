@@ -78,11 +78,22 @@ def install_package_safely(package_name, timeout=60):
         
         print(f"Installing package: {package_name}", file=sys.stderr)
         
-        # 安装包
-        result = subprocess.run([
-            sys.executable, '-m', 'pip', 'install', package_name,
-            '--quiet', '--disable-pip-version-check', '--no-warn-script-location'
-        ], capture_output=True, text=True, timeout=timeout)
+        # 安装包 - 尝试多种安装方式
+        install_commands = [
+            [sys.executable, '-m', 'pip', 'install', package_name, '--break-system-packages', '--quiet', '--disable-pip-version-check'],
+            [sys.executable, '-m', 'pip', 'install', package_name, '--user', '--quiet', '--disable-pip-version-check'],
+            ['pip3', 'install', package_name, '--break-system-packages', '--quiet'],
+            ['apt', 'install', '-y', f'python3-{package_name.replace("-", "")}', '--quiet']
+        ]
+        
+        result = None
+        for cmd in install_commands:
+            try:
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+                if result.returncode == 0:
+                    break
+            except (subprocess.TimeoutExpired, FileNotFoundError):
+                continue
         
         if result.returncode == 0:
             _installed_packages.add(package_name)
