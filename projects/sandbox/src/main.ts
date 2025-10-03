@@ -40,4 +40,4 @@ async function bootstrap(port: number) {
     }
   }
 }
-bootstrap(3002);
+bootstrap(3000);
