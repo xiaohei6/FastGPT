@@ -224,16 +224,8 @@ def process_matplotlib_images(result):
 
 def remove_print_statements(code):
     try:
-        # 使用简单的字符串处理方法移除print语句
-        lines = code.split('\\n')
-        result_lines = []
-        
-        for line in lines:
-            stripped = line.strip()
-            if not (stripped.startswith('print(') and stripped.endswith(')')):
-                result_lines.append(line)
-        
-        return '\\n'.join(result_lines)
+        # 不移除print语句，保留它们用于日志输出
+        return code
     except Exception:
         # 如果处理失败，返回原始代码
         return code
@@ -465,6 +457,10 @@ for k, v in locals_dict.items():
         except (TypeError, ValueError):
             # 如果不能序列化，转换为字符串
             filtered_locals[k] = str(v)
+
+# 如果没有任何变量，返回一个表示成功的结果
+if not filtered_locals:
+    filtered_locals = {"success": True}
 
 print(repr(filtered_locals))
 """

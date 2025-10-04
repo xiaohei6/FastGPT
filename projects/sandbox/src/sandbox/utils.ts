@@ -168,8 +168,47 @@ print(json.dumps(res))
     if (parsedOutput.error) {
       return Promise.reject(parsedOutput.error || 'Unknown error');
     }
-    return { codeReturn: parsedOutput, log: '' };
+
+    // 分离print输出和结果输出
+    const lines = stdout.trim().split('\n');
+    let resultLine = '';
+    let logLines: string[] = [];
+
+    // 找到最后一行JSON结果
+    for (let i = lines.length - 1; i >= 0; i--) {
+      try {
+        JSON.parse(lines[i]);
+        resultLine = lines[i];
+        logLines = lines.slice(0, i);
+        break;
+      } catch {
+        continue;
+      }
+    }
+
+    const result = resultLine ? JSON.parse(resultLine) : parsedOutput;
+    const log = logLines.join('\n');
+
+    return { codeReturn: result, log };
   } catch (err) {
+    // 如果解析失败，尝试分离输出
+    const lines = stdout.trim().split('\n');
+    let logLines: string[] = [];
+    let resultLine = '';
+
+    // 从后往前找最后一个可解析的JSON行
+    for (let i = lines.length - 1; i >= 0; i--) {
+      try {
+        const parsed = JSON.parse(lines[i]);
+        resultLine = lines[i];
+        logLines = lines.slice(0, i);
+        return { codeReturn: parsed, log: logLines.join('\n') };
+      } catch {
+        continue;
+      }
+    }
+
+    // 如果没有找到JSON结果，返回所有输出作为日志
     if (
       stdout.includes('malformed node or string on line 1') ||
       stdout.includes('invalid syntax (<unknown>, line 1)')
