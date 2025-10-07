@@ -3,8 +3,12 @@ FROM python:3.11-alpine AS python_base
 ENV VERSION_RELEASE = Alpine3.11
 # 安装make、g++和中文字体支持
 RUN apk add --no-cache make g++ tar wget gperf automake libtool linux-headers \
-    fontconfig ttf-dejavu ttf-liberation \
-    && fc-cache -f
+    fontconfig ttf-dejavu ttf-liberation ttf-droid ttf-freefont \
+    && wget -O /tmp/NotoSansCJK.ttc "https://github.com/googlefonts/noto-cjk/raw/main/Sans/OTC/NotoSansCJK.ttc" \
+    && mkdir -p /usr/share/fonts/truetype/noto \
+    && cp /tmp/NotoSansCJK.ttc /usr/share/fonts/truetype/noto/ \
+    && fc-cache -f \
+    && rm /tmp/NotoSansCJK.ttc
 
 WORKDIR /app
 COPY projects/sandbox/requirements.txt /app/requirements.txt
@@ -58,8 +62,12 @@ RUN pnpm --filter=sandbox build
 FROM node:20.14.0-alpine AS runner
 WORKDIR /app
 
-RUN apk add --no-cache libffi libffi-dev strace bash fontconfig ttf-dejavu ttf-liberation \
-    && fc-cache -f
+RUN apk add --no-cache libffi libffi-dev strace bash fontconfig ttf-dejavu ttf-liberation ttf-droid ttf-freefont \
+    && wget -O /tmp/NotoSansCJK.ttc "https://github.com/googlefonts/noto-cjk/raw/main/Sans/OTC/NotoSansCJK.ttc" \
+    && mkdir -p /usr/share/fonts/truetype/noto \
+    && cp /tmp/NotoSansCJK.ttc /usr/share/fonts/truetype/noto/ \
+    && fc-cache -f \
+    && rm /tmp/NotoSansCJK.ttc
 COPY --from=python_base /usr/local /usr/local
 COPY --from=builder /app/node_modules /app/node_modules
 COPY --from=builder /app/projects/sandbox /app/projects/sandbox

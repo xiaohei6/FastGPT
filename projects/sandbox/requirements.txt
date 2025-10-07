@@ -12,3 +12,17 @@ opencv-python
 jupyter
 ipython
 tqdm
+# 中文字体支持
+fonttools
+# 图像处理增强
+Pillow
+# 数学计算
+sympy
+# 数据处理
+openpyxl
+# 可视化增强
+bokeh
+# 网络请求
+urllib3
+# 安全相关
+seccomp

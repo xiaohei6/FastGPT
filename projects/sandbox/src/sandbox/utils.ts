@@ -11,6 +11,7 @@ import { createHmac } from './jsFn/crypto';
 
 import { spawn } from 'child_process';
 import { pythonScript } from './constants';
+import { pythonScriptEnhanced } from './constants_enhanced';
 const CustomLogStr = 'CUSTOM_LOG';
 
 export const runJsSandbox = async ({
@@ -140,7 +141,7 @@ res = run_pythonCode(data)
 print(json.dumps(res))
 `;
 
-  const fullCode = [pythonScript, mainCallCode].filter(Boolean).join('\n');
+  const fullCode = [pythonScriptEnhanced, mainCallCode].filter(Boolean).join('\n');
   const { path: tempFilePath, cleanup } = await createTempFile(tempDir, fullCode);
   const pythonProcess = spawn('python3', ['-u', tempFilePath]);
 

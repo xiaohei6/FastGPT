@@ -1,4 +1,4 @@
-export const pythonScript = `
+export const pythonScriptEnhanced = `
 import os
 import subprocess
 import json
@@ -10,6 +10,12 @@ import urllib.parse
 import sys
 import importlib.util
 import platform
+import io
+import warnings
+
+# 忽略matplotlib警告
+warnings.filterwarnings('ignore', category=UserWarning)
+warnings.filterwarnings('ignore', category=FutureWarning)
 
 # 全局变量存储已安装的包
 _installed_packages = set()
@@ -49,7 +55,12 @@ def get_package_mapping():
         'pandas': 'pandas',
         'tqdm': 'tqdm',
         'jupyter': 'jupyter',
-        'IPython': 'ipython'
+        'IPython': 'ipython',
+        'sympy': 'sympy',
+        'openpyxl': 'openpyxl',
+        'bokeh': 'bokeh',
+        'urllib3': 'urllib3',
+        'fonttools': 'fonttools'
     }
 
 def is_package_installed(package_name):
@@ -84,7 +95,6 @@ def install_package_safely(package_name, timeout=60):
             [sys.executable, '-m', 'pip', 'install', package_name, '--break-system-packages', '--quiet', '--disable-pip-version-check'],
             [sys.executable, '-m', 'pip', 'install', package_name, '--user', '--quiet', '--disable-pip-version-check'],
             ['pip3', 'install', package_name, '--break-system-packages', '--quiet'],
-            ['apt', 'install', '-y', 'python3-' + package_name.replace("-", ""), '--quiet']
         ]
         
         result = None
@@ -96,11 +106,11 @@ def install_package_safely(package_name, timeout=60):
             except (subprocess.TimeoutExpired, FileNotFoundError):
                 continue
         
-        if result.returncode == 0:
+        if result and result.returncode == 0:
             _installed_packages.add(package_name)
             return True
         else:
-            print("Failed to install " + package_name + ": " + result.stderr, file=sys.stderr)
+            print("Failed to install " + package_name, file=sys.stderr)
             return False
             
     except subprocess.TimeoutExpired:
@@ -119,7 +129,7 @@ def install_missing_packages(imports):
         'os', 'sys', 'json', 'ast', 'base64', 'tempfile', 'shutil', 'urllib',
         'datetime', 'math', 'random', 'collections', 'itertools', 'functools',
         'operator', 're', 'string', 'time', 'calendar', 'hashlib', 'uuid',
-        'importlib', 'subprocess', 'platform', 'errno', 'inspect'
+        'importlib', 'subprocess', 'platform', 'errno', 'inspect', 'io', 'warnings'
     }
     
     packages_to_install = []
@@ -158,7 +168,8 @@ def setup_matplotlib_chinese_font():
         # 尝试设置中文字体
         chinese_fonts = [
             'SimHei', 'Microsoft YaHei', 'WenQuanYi Micro Hei', 
-            'DejaVu Sans', 'Arial Unicode MS', 'Noto Sans CJK SC'
+            'DejaVu Sans', 'Arial Unicode MS', 'Noto Sans CJK SC',
+            'Liberation Sans', 'Droid Sans Fallback', 'FreeSans'
         ]
         
         available_fonts = [f.name for f in fm.fontManager.ttflist]
@@ -170,12 +181,18 @@ def setup_matplotlib_chinese_font():
                 break
         
         if selected_font:
-            plt.rcParams['font.sans-serif'] = [selected_font]
+            plt.rcParams['font.sans-serif'] = [selected_font, 'DejaVu Sans']
             plt.rcParams['axes.unicode_minus'] = False
         else:
             # 如果没有找到中文字体，使用默认字体但配置unicode支持
             plt.rcParams['font.sans-serif'] = ['DejaVu Sans']
             plt.rcParams['axes.unicode_minus'] = False
+        
+        # 设置字体大小和样式
+        plt.rcParams['font.size'] = 12
+        plt.rcParams['figure.dpi'] = 100
+        plt.rcParams['savefig.dpi'] = 150
+        plt.rcParams['savefig.bbox'] = 'tight'
         
         return selected_font
     except Exception as e:
@@ -185,8 +202,6 @@ def process_matplotlib_images(result):
     """处理matplotlib图片并转换为base64格式"""
     try:
         import matplotlib.pyplot as plt
-        import io
-        import base64
         
         # 检查是否有matplotlib图形需要保存
         if hasattr(plt, 'get_fignums') and plt.get_fignums():
@@ -194,7 +209,8 @@ def process_matplotlib_images(result):
             for fig_num in plt.get_fignums():
                 fig = plt.figure(fig_num)
                 buffer = io.BytesIO()
-                fig.savefig(buffer, format='png', dpi=150, bbox_inches='tight')
+                fig.savefig(buffer, format='png', dpi=150, bbox_inches='tight', 
+                           facecolor='white', edgecolor='none')
                 buffer.seek(0)
                 image_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
                 figures_data.append("data:image/png;base64," + image_base64)
@@ -222,45 +238,44 @@ def process_matplotlib_images(result):
         # 图片处理失败，继续返回原结果
         return result
 
-def remove_print_statements(code):
-    try:
-        # 不移除print语句，保留它们用于日志输出
-        return code
-    except Exception:
-        # 如果处理失败，返回原始代码
-        return code
-
 def detect_dangerous_imports(code):
-    # Add file writing modules to the blacklist
+    """检测危险的导入模块"""
     dangerous_modules = [
         "os", "subprocess", "shutil", "socket", "ctypes", 
         "multiprocessing", "threading", "pickle",
-        # Additional modules that can write files
-        "tempfile", "pathlib", "fileinput"
+        "tempfile", "pathlib", "fileinput", "glob", "fnmatch",
+        "zipfile", "tarfile", "gzip", "bz2", "lzma",
+        "mmap", "signal", "resource", "pwd", "grp"
     ]
-    tree = ast.parse(code)
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            for alias in node.names:
-                if alias.name in dangerous_modules:
-                    return alias.name
-        elif isinstance(node, ast.ImportFrom):
-            if node.module in dangerous_modules:
-                return node.module
+    
+    try:
+        tree = ast.parse(code)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.name in dangerous_modules:
+                        return alias.name
+            elif isinstance(node, ast.ImportFrom):
+                if node.module in dangerous_modules:
+                    return node.module
+    except Exception:
+        pass
+    
     return None
 
 def detect_file_write_operations(code):
-    """Detect potential file writing operations in code"""
+    """检测潜在的文件写入操作"""
     dangerous_patterns = [
         'open(', 'file(', 'write(', 'writelines(',
         'with open', 'f.write', '.write(', 
-        'mkdir', 'makedirs'
+        'mkdir', 'makedirs', 'rmdir', 'removedirs',
+        'unlink', 'remove', 'rename', 'replace'
     ]
     
     # 允许matplotlib相关的操作
     matplotlib_patterns = [
         'plt.figure', 'plt.plot', 'plt.show', 'plt.savefig',
-        'matplotlib.pyplot', 'fig.savefig'
+        'matplotlib.pyplot', 'fig.savefig', 'plt.savefig'
     ]
     
     # 检查是否包含matplotlib操作
@@ -268,30 +283,11 @@ def detect_file_write_operations(code):
     
     for pattern in dangerous_patterns:
         if pattern in code:
-            # 如果是matplotlib相关代码，允许create操作
-            if has_matplotlib and pattern == 'create':
+            # 如果是matplotlib相关代码，允许特定操作
+            if has_matplotlib and ('savefig' in pattern or 'figure' in pattern):
                 continue
             return "File write operation detected: " + pattern
     return None
-
-def img_to_base64(img_path):
-    """Convert image file to base64 string"""
-    import base64
-    with open(img_path, "rb") as img_file:
-        return base64.b64encode(img_file.read()).decode('utf-8')
-
-def save_matplotlib_to_base64(fig, format='png', dpi=150):
-    """Save matplotlib figure to base64 string"""
-    import io
-    import base64
-    
-    buffer = io.BytesIO()
-    fig.savefig(buffer, format=format, dpi=dpi, bbox_inches='tight')
-    buffer.seek(0)
-    image_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
-    buffer.close()
-    
-    return "data:image/" + format + ";base64," + image_base64
 
 def setup_seccomp():
     """设置seccomp安全限制"""
@@ -301,11 +297,10 @@ def setup_seccomp():
             import seccomp
             import errno
             allowed_syscalls = [
-                # File operations - READ ONLY (removed SYS_WRITE)
+                # File operations - READ ONLY
                 "syscall.SYS_READ",
-                # Removed "syscall.SYS_WRITE" - no general write access
-                "syscall.SYS_OPEN",      # Still needed for reading files
-                "syscall.SYS_OPENAT",   # Still needed for reading files
+                "syscall.SYS_OPEN",
+                "syscall.SYS_OPENAT",
                 "syscall.SYS_CLOSE",
                 "syscall.SYS_FSTAT",
                 "syscall.SYS_LSTAT",
@@ -391,6 +386,7 @@ def setup_seccomp():
             pass
 
 def run_pythonCode(data):
+    """执行Python代码的主函数"""
     if not data or "code" not in data:
         return {"error": "Invalid request format: missing code"}
     
@@ -408,9 +404,6 @@ def run_pythonCode(data):
     install_error = install_missing_packages(imports)
     if install_error:
         return {"error": install_error}
-    
-    # 移除print语句
-    code = remove_print_statements(code)
     
     # 检查危险导入
     dangerous_import = detect_dangerous_imports(code)
@@ -433,25 +426,54 @@ def run_pythonCode(data):
             return {"error": "Invalid variable name: " + repr(k)}
         
         try:
-            # 使用json.dumps来安全地序列化变量值，避免引号冲突
+            # 使用json.dumps来安全地序列化变量值
             import json
-            one_var = k + " = " + json.dumps(v) + "\\n"
+            one_var = k + " = " + json.dumps(v) + "\n"
             var_def = var_def + one_var
         except Exception as e:
             return {"error": "Error processing variable " + k + ": " + str(e)}
     
     # 创建执行代码，添加结果收集与图片处理逻辑
-    execution_code = var_def + "\\n" + """
+    execution_code = var_def + "\n" + """
+# 设置matplotlib中文字体支持
 try:
     import matplotlib
     matplotlib.use('Agg')
     import matplotlib.pyplot as plt
     import matplotlib.font_manager as fm
-    # 中文字体与负号显示
-    plt.rcParams['font.sans-serif'] = ['DejaVu Sans']
-    plt.rcParams['axes.unicode_minus'] = False
+    
+    # 尝试设置中文字体
+    chinese_fonts = [
+        'Noto Sans CJK SC', 'Noto Sans CJK TC', 'Noto Sans CJK JP', 'Noto Sans CJK KR',
+        'SimHei', 'Microsoft YaHei', 'WenQuanYi Micro Hei', 
+        'DejaVu Sans', 'Arial Unicode MS',
+        'Liberation Sans', 'Droid Sans Fallback', 'FreeSans'
+    ]
+    
+    available_fonts = [f.name for f in fm.fontManager.ttflist]
+    selected_font = None
+    
+    for font in chinese_fonts:
+        if font in available_fonts:
+            selected_font = font
+            break
+    
+    if selected_font:
+        plt.rcParams['font.sans-serif'] = [selected_font, 'DejaVu Sans']
+        plt.rcParams['axes.unicode_minus'] = False
+    else:
+        plt.rcParams['font.sans-serif'] = ['DejaVu Sans']
+        plt.rcParams['axes.unicode_minus'] = False
+    
+    # 设置字体大小和样式
+    plt.rcParams['font.size'] = 12
+    plt.rcParams['figure.dpi'] = 100
+    plt.rcParams['savefig.dpi'] = 150
+    plt.rcParams['savefig.bbox'] = 'tight'
+    
 except Exception:
     pass
+
 """ + code + """
 
 # 若用户提供了 main 函数，则尝试按参数名自动调用
@@ -478,7 +500,7 @@ locals_dict = dict(locals())
 # 移除内置变量和模块
 filtered_locals = {}
 for k, v in locals_dict.items():
-    if not k.startswith('__') and k not in ['json', 'locals_dict', 'io', 'base64']:
+    if not k.startswith('__') and k not in ['json', 'locals_dict', 'io', 'base64', 'matplotlib', 'plt', 'fm', 'selected_font', 'chinese_fonts', 'available_fonts']:
         try:
             # 尝试序列化以确保变量可以被JSON化
             json.dumps(v)
@@ -487,26 +509,6 @@ for k, v in locals_dict.items():
             # 如果不能序列化，转换为字符串
             filtered_locals[k] = str(v)
 
-# 如果 main(**kwargs) 的返回值是一个字典，则将其扁平并合并到顶层，满足前端按 key 捕获输出的契约
-try:
-    if 'r' in locals():
-        if isinstance(r, dict):
-            for _k, _v in r.items():
-                try:
-                    json.dumps(_v)
-                    filtered_locals[_k] = _v
-                except (TypeError, ValueError):
-                    filtered_locals[_k] = str(_v)
-        else:
-            # 非字典返回，落入默认的 result 字段
-            try:
-                json.dumps(r)
-                filtered_locals['result'] = r
-            except (TypeError, ValueError):
-                filtered_locals['result'] = str(r)
-except Exception:
-    pass
-
 # 处理 matplotlib 生成的图片为 base64
 try:
     if 'plt' in locals() and hasattr(plt, 'get_fignums') and plt.get_fignums():
@@ -514,7 +516,8 @@ try:
         for fig_num in plt.get_fignums():
             fig = plt.figure(fig_num)
             buffer = io.BytesIO()
-            fig.savefig(buffer, format='png', dpi=150, bbox_inches='tight')
+            fig.savefig(buffer, format='png', dpi=150, bbox_inches='tight', 
+                       facecolor='white', edgecolor='none')
             buffer.seek(0)
             image_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
             figures_data.append("data:image/png;base64," + image_base64)
